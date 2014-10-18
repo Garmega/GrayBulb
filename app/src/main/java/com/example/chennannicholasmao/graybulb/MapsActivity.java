@@ -1,22 +1,58 @@
 package com.example.chennannicholasmao.graybulb;
 
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.location.Location;
+import android.os.IBinder;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
-public class MapsActivity extends FragmentActivity {
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+
+public class MapsActivity extends FragmentActivity implements GoogleMap.OnMyLocationChangeListener {
 
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
+    POIUpdateService mService;
+    boolean mBound = false;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+
         setUpMapIfNeeded();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        //Intent intent = new Intent(this, POIUpdateService.class);
+        //bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+
+//        populateMap();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Unbind from the service
+        if (mBound) {
+            unbindService(mConnection);
+            mBound = false;
+        }
     }
 
     @Override
@@ -53,6 +89,8 @@ public class MapsActivity extends FragmentActivity {
         }
     }
 
+
+
     /**
      * This is where we can add markers or lines, add listeners or move the camera. In this case, we
      * just add a marker near Africa.
@@ -61,6 +99,36 @@ public class MapsActivity extends FragmentActivity {
      */
     private void setUpMap() {
         mMap.setMyLocationEnabled(true);
-        //mMap.addMarker(new MarkerOptions().position(new LatLng(0, 0)).title("Marker"));
+        mMap.setOnMyLocationChangeListener(this);
     }
+
+    private void populateMap() {
+        ArrayList<LatLng> list = mService.createList();
+    }
+
+    @Override
+    public void onMyLocationChange(Location lastKnownLocation) {
+        CameraUpdate myLoc = CameraUpdateFactory.newCameraPosition(
+                new CameraPosition.Builder().target(new LatLng(lastKnownLocation.getLatitude(),
+                        lastKnownLocation.getLongitude())).zoom(14).build());
+        mMap.animateCamera(myLoc);
+        mMap.setOnMyLocationChangeListener(null);
+
+    }
+
+    private ServiceConnection mConnection = new ServiceConnection() {
+
+        @Override
+        public void onServiceConnected(ComponentName POIUpdateService, IBinder service) {
+            // We've bound to LocalService, cast the IBinder and get LocalService instance
+            POIUpdateService.LocalBinder binder = (POIUpdateService.LocalBinder) service;
+            mService = binder.getService();
+            mBound = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            mBound = false;
+        }
+    };
 }
