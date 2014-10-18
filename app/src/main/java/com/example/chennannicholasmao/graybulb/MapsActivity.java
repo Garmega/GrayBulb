@@ -3,8 +3,10 @@ package com.example.chennannicholasmao.graybulb;
 import android.app.Activity;
 import android.app.Dialog;
 import android.app.DialogFragment;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentSender;
+import android.content.SharedPreferences;
 import android.location.Location;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
@@ -15,6 +17,8 @@ import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesClient;
 import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.location.LocationClient;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
@@ -22,27 +26,51 @@ import com.google.android.gms.maps.model.MarkerOptions;
 
 public class MapsActivity extends FragmentActivity implements
         GooglePlayServicesClient.ConnectionCallbacks,
-        GooglePlayServicesClient.OnConnectionFailedListener {
+        GooglePlayServicesClient.OnConnectionFailedListener,
+        LocationListener {
 
     private static final int CONNECTION_FAILURE_RESOLUTION_REQUEST = 9000;
+    private static final int MILLISECONDS_PER_SECOND = 1000;
+    private static final int UPDATE_INTERVAL_IN_SECONDS = 5;
+    private static final long UPDATE_INTERVAL = MILLISECONDS_PER_SECOND * UPDATE_INTERVAL_IN_SECONDS;
+    private static final int FASTEST_INTERVAL_IN_SECONDS = 1;
+    private static final long FASTEST_INTERVAL = MILLISECONDS_PER_SECOND * FASTEST_INTERVAL_IN_SECONDS;
 
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
-    LocationClient locationClient1;
-    Location curLocation;
+    private Location curLocation;
+    private LocationClient locationClient1;
+    private LocationRequest locationRequest;
+    private boolean updateRequested;
+    private SharedPreferences mPrefs;
+    private SharedPreferences.Editor mEditor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        locationRequest = LocationRequest.create();
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        locationRequest.setInterval(UPDATE_INTERVAL);
+        locationRequest.setFastestInterval(FASTEST_INTERVAL);
+
+        mPrefs = getSharedPreferences("SharedPreferences", Context.MODE_PRIVATE);
+        mEditor = mPrefs.edit();
+
         setContentView(R.layout.activity_maps);
         setUpMapIfNeeded();
         locationClient1 = new LocationClient(this, this, this);
-
+        updateRequested = false;
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         setUpMapIfNeeded();
+        if (mPrefs.contains("KEY_UPDATES_ON")) {
+            updateRequested = mPrefs.getBoolean("KEY_UPDATES_ON", false);
+        } else {
+            mEditor.putBoolean("KEY_UPDATES_ON", false);
+            mEditor.commit();
+        }
     }
 
     protected void onStart() {
@@ -51,8 +79,26 @@ public class MapsActivity extends FragmentActivity implements
     }
 
     protected void onStop() {
+        if (locationClient1.isConnected()) {
+            locationClient1.removeLocationUpdates(this);
+        }
+
         locationClient1.disconnect();
         super.onStop();
+    }
+
+    protected void onPause() {
+        mEditor.putBoolean("KEY_UPDATES_ON", updateRequested);
+        mEditor.commit();
+        super.onPause();
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+        String msg = "Updated location: "
+                + Double.toString(location.getLatitude()) + ","
+                + Double.toString(location.getLongitude());
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 
     public static class ErrorDialogFragment extends DialogFragment {
@@ -109,8 +155,7 @@ public class MapsActivity extends FragmentActivity implements
         return false;
     }
 
-    protected void onActivityResult(
-            int requestCode, int resultCode, Intent data) {
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         // Decide what to do based on the original request code
         switch (requestCode) {
             case CONNECTION_FAILURE_RESOLUTION_REQUEST :
@@ -166,6 +211,7 @@ public class MapsActivity extends FragmentActivity implements
      * This should only be called once and when we are sure that {@link #mMap} is not null.
      */
     private void setUpMap() {
+        mMap.setMyLocationEnabled(true);
         //mMap.addMarker(new MarkerOptions().position(new LatLng(47, 122)).title("I'm here!!!"));
         //mMap.addMarker(new MarkerOptions().position(point).title("I'm here!!"));
     }
@@ -176,10 +222,13 @@ public class MapsActivity extends FragmentActivity implements
     public void onConnected(Bundle bundle) {
         Toast.makeText(this, "Connected", Toast.LENGTH_SHORT).show();
 
-
         curLocation = locationClient1.getLastLocation();
         LatLng point = new LatLng(curLocation.getLatitude(), curLocation.getLongitude());
         mMap.addMarker(new MarkerOptions().position(point).title("I'm here!!"));
+
+        if (updateRequested) {
+            locationClient1.requestLocationUpdates(locationRequest, this);
+        }
     }
 
     @Override
